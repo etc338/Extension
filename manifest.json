@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "B2B Lead Scraper",
+  "version": "1.0",
+  "description": "Scrapes Google Maps for B2B leads that do not have a website.",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://www.google.com/maps/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.google.com/maps/*"],
+      "js": ["content.js"]
+    }
+  ]
+}

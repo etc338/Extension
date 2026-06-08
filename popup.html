@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>B2B Scraper</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            width: 320px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            color: #333;
+            text-align: center;
+            margin: 0;
+        }
+        h2 {
+            margin-top: 0;
+            font-size: 20px;
+            color: #1a73e8;
+        }
+        p {
+            font-size: 14px;
+            color: #5f6368;
+            margin-bottom: 20px;
+            line-height: 1.4;
+        }
+        button {
+            background-color: #1a73e8;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            font-size: 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+            transition: background-color 0.2s;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #1557b0;
+        }
+        .status {
+            margin-top: 15px;
+            font-size: 13px;
+            color: #28a745;
+            display: none;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <h2>B2B Lead Scraper</h2>
+    <p>Perform a search on Google Maps (e.g., "Gyms in Ahmedabad"), then click below to extract leads without a website.</p>
+    <button id="start-btn">Start Scraping & Export</button>
+    <div id="status" class="status">Scraping started! Please keep the Google Maps tab open and active.</div>
+    
+    <script src="popup.js"></script>
+</body>
+</html>
