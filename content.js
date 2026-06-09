@@ -117,7 +117,8 @@ function extractData() {
         Hours: "Not available"
     };
 
-    let nameEl = document.querySelector('h1');
+    let nameEls = Array.from(document.querySelectorAll('h1'));
+    let nameEl = nameEls.find(el => el.innerText.trim() && el.innerText.trim() !== "Results");
     if (nameEl) data.Name = nameEl.innerText.trim();
     
     let ratingEl = document.querySelector('div[role="img"][aria-label*="stars"]');
@@ -251,7 +252,22 @@ async function startScraping(maxResults) {
             await randomDelay(600, 1400); 
             unprocessed.click();
             
-            let detailsLoaded = await waitForElement('h1', 8000);
+            let detailsLoaded = await new Promise(resolve => {
+                let checks = 0;
+                let interval = setInterval(() => {
+                    let h1s = Array.from(document.querySelectorAll('h1'));
+                    let validH1 = h1s.find(h => h.innerText.trim() && h.innerText.trim() !== "Results");
+                    if (validH1) {
+                        clearInterval(interval);
+                        resolve(true);
+                    }
+                    if (checks > 40) { // 8 seconds max
+                        clearInterval(interval);
+                        resolve(false);
+                    }
+                    checks++;
+                }, 200);
+            });
             if (detailsLoaded) {
                 // SECURITY FIX: Random "reading" time before pulling data
                 await randomDelay(2000, 4500); 
