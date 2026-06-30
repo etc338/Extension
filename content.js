@@ -5,7 +5,7 @@ window.stopScraping = false;
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "start") {
         if (!isRunning) {
-            startScraping(150);
+            startScraping(150); // Set to process up to 150 search results
         }
         sendResponse({ status: "started" });
     }
@@ -16,33 +16,38 @@ async function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Random delay to mimic human behavior
+// SECURITY FIX: Random Async delay to mimic human behavior and avoid bot detection
 async function randomDelay(min, max) {
     const ms = Math.floor(Math.random() * (max - min + 1)) + min;
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Human-like scroll in small steps
+// SECURITY FIX: Human-like scrolling to avoid bot detection
 async function humanScroll(element) {
     let currentScroll = element.scrollTop;
     let targetScroll = element.scrollHeight;
     let distance = targetScroll - currentScroll;
-    let steps = Math.floor(Math.random() * 4) + 3;
+    
+    // Scroll down in 3 to 6 smaller steps (like scrolling a mouse wheel)
+    let steps = Math.floor(Math.random() * 4) + 3; 
     let stepAmount = distance / steps;
 
-    for (let i = 0; i < steps; i++) {
+    for(let i=0; i<steps; i++) {
         currentScroll += stepAmount;
         element.scrollTo(0, currentScroll);
-        await randomDelay(150, 400);
+        await randomDelay(150, 400); // short pause between wheel ticks
     }
+    // Ensure we hit the absolute bottom
     element.scrollTo(0, element.scrollHeight);
 }
 
-// Wait for element to appear in DOM
-function waitForElement(selector, timeout = 8000) {
+// Helper: Wait for an element to appear in the DOM
+function waitForElement(selector, timeout) {
     return new Promise(resolve => {
-        if (document.querySelector(selector)) return resolve(true);
-        const observer = new MutationObserver(() => {
+        if (document.querySelector(selector)) {
+            return resolve(true);
+        }
+        let observer = new MutationObserver(() => {
             if (document.querySelector(selector)) {
                 observer.disconnect();
                 resolve(true);
@@ -56,47 +61,51 @@ function waitForElement(selector, timeout = 8000) {
     });
 }
 
-// Show floating progress banner
+// UI: Show a floating banner to indicate scraping progress
 function showBanner() {
     if (document.getElementById('scraper-banner')) return;
-    const banner = document.createElement('div');
+    let banner = document.createElement('div');
     banner.id = 'scraper-banner';
-    Object.assign(banner.style, {
-        position: 'fixed', bottom: '20px', right: '20px',
-        backgroundColor: '#1a73e8', color: 'white',
-        padding: '20px', borderRadius: '8px', zIndex: '999999',
-        fontFamily: 'sans-serif', boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
-        minWidth: '250px'
-    });
+    banner.style.position = 'fixed';
+    banner.style.bottom = '20px';
+    banner.style.right = '20px';
+    banner.style.backgroundColor = '#1a73e8';
+    banner.style.color = 'white';
+    banner.style.padding = '20px';
+    banner.style.borderRadius = '8px';
+    banner.style.zIndex = '999999';
+    banner.style.fontFamily = 'sans-serif';
+    banner.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
+    
     banner.innerHTML = `
-        <h3 style="margin:0 0 10px 0;font-size:18px;">🔍 Google Maps Scraper</h3>
-        <p id="scraper-status" style="margin:0 0 15px 0;font-size:14px;">Starting...</p>
-        <button id="scraper-stop" style="padding:8px 12px;font-size:14px;cursor:pointer;background:#ff4757;color:white;border:none;border-radius:4px;">Stop & Export</button>
+        <h3 style="margin: 0 0 10px 0; font-size: 18px;">Google Maps Scraper (Secure Mode)</h3>
+        <p id="scraper-status" style="margin: 0 0 15px 0; font-size: 14px;">Processed: 0 | Leads Found: 0</p>
+        <button id="scraper-stop" style="padding: 8px 12px; font-size: 14px; cursor: pointer; background: #ff4757; color: white; border: none; border-radius: 4px;">Stop & Export</button>
     `;
     document.body.appendChild(banner);
+    
     document.getElementById('scraper-stop').addEventListener('click', () => {
         window.stopScraping = true;
-        document.getElementById('scraper-stop').innerText = "Stopping...";
+        document.getElementById('scraper-stop').innerText = "Stopping safely...";
     });
 }
 
-function updateBanner(leads, total) {
-    const el = document.getElementById('scraper-status');
-    if (el) el.innerText = `Checked: ${total} | Leads (No Website): ${leads}`;
+function updateBanner(count, total) {
+    let status = document.getElementById('scraper-status');
+    if (status) {
+        status.innerText = `Processed: ${total} | Leads Found (No Website): ${count}`;
+    }
 }
 
 function removeBanner() {
-    const b = document.getElementById('scraper-banner');
-    if (b) b.remove();
+    let banner = document.getElementById('scraper-banner');
+    if (banner) banner.remove();
 }
 
-// ─────────────────────────────────────────────
-// FIX: Extract data from the currently open detail panel
-// Uses multiple fallback selectors to handle Google Maps UI changes
-// ─────────────────────────────────────────────
+// Core Logic: Extract data from the detail pane
 function extractData() {
-    const data = {
-        Name: "Not available",
+    let data = {
+        Name: "",
         Phone: "Not available",
         Address: "Not available",
         Website: "No Website",
@@ -108,161 +117,149 @@ function extractData() {
         Hours: "Not available"
     };
 
-    // ── NAME ──────────────────────────────────
-    // Try multiple heading selectors
-    const nameSelectors = ['h1.DUwDvf', 'h1[class*="fontHeadlineLarge"]', 'h1'];
-    for (const sel of nameSelectors) {
-        const el = document.querySelector(sel);
-        if (el && el.innerText.trim()) {
-            data.Name = el.innerText.trim();
-            break;
-        }
+    // Name Extraction
+    let nameEl = document.querySelector('h1.DUwDvf, h1.fontHeadlineLarge');
+    if (!nameEl) {
+        let nameEls = Array.from(document.querySelectorAll('h1'));
+        nameEl = nameEls.find(el => el.innerText.trim() && el.innerText.trim() !== "Results" && !el.innerText.trim().startsWith("Sponsored"));
     }
-
-    // ── RATING & REVIEWS ─────────────────────
-    // aria-label on the star image contains "4.5 stars 120 reviews"
-    const ratingEl = document.querySelector('div[role="img"][aria-label*="star"]');
+    if (nameEl) data.Name = nameEl.innerText.trim();
+    
+    // Rating & Reviews Extraction
+    let ratingEl = document.querySelector('div[role="img"][aria-label*="stars"]') || document.querySelector('div[role="img"][aria-label*="star"]');
     if (ratingEl) {
-        const label = ratingEl.getAttribute('aria-label') || '';
-        const ratingMatch = label.match(/(\d+\.?\d*)\s*star/i);
-        const reviewMatch = label.match(/([\d,]+)\s*review/i);
-        if (ratingMatch) data.Rating = ratingMatch[1];
+        let aria = ratingEl.getAttribute('aria-label');
+        let parts = aria.split(' ');
+        if (parts.length > 0) data.Rating = parts[0];
+        
+        let reviewMatch = aria.match(/([\d,]+)\s*(reviews|Reviews)/) || aria.match(/([\d,]+)\s*(review|Review)/);
         if (reviewMatch) data.Reviews = reviewMatch[1];
-    }
-    // Fallback: look for the visible rating text near stars
-    if (data.Rating === "Not available") {
-        const ratingText = document.querySelector('span[aria-hidden="true"].ceNzKf, span.MW4etd');
-        if (ratingText) data.Rating = ratingText.innerText.trim();
-    }
-
-    // ── CATEGORY ─────────────────────────────
-    // Category is usually a button or span near the top of the detail pane
-    const categorySelectors = [
-        'button[jsaction*="category"]',
-        'span.DkEaL',
-        'button.DkEaL',
-        // generic: first small text button after the name
-    ];
-    for (const sel of categorySelectors) {
-        const el = document.querySelector(sel);
-        if (el && el.innerText.trim()) {
-            data.Category = el.innerText.trim();
-            break;
-        }
-    }
-
-    // ── PHONE ─────────────────────────────────
-    // Google uses data-item-id="phone:tel:XXXXX" on the phone row button
-    const phoneBtn = document.querySelector('[data-item-id^="phone:tel:"]');
-    if (phoneBtn) {
-        // The actual number is in a child span
-        const span = phoneBtn.querySelector('span.Io6YTe, span[jstcache]') || phoneBtn;
-        data.Phone = span.innerText.trim() || phoneBtn.getAttribute('data-item-id').replace('phone:tel:', '');
-    }
-
-    // ── ADDRESS ───────────────────────────────
-    const addressBtn = document.querySelector('[data-item-id="address"]');
-    if (addressBtn) {
-        const span = addressBtn.querySelector('span.Io6YTe') || addressBtn;
-        data.Address = span.innerText.trim();
-    }
-    // Fallback: look for an element with aria-label containing "address"
-    if (data.Address === "Not available") {
-        const allBtns = document.querySelectorAll('button[aria-label]');
-        for (const btn of allBtns) {
-            const lbl = btn.getAttribute('aria-label') || '';
-            if (lbl.toLowerCase().includes('address:') || lbl.toLowerCase().includes('located')) {
-                data.Address = lbl.replace(/^address:\s*/i, '').trim();
-                break;
+    } else {
+        let fallbackReview = document.querySelector('.F7nice');
+        if (fallbackReview) {
+            let parts = fallbackReview.innerText.split('\n');
+            if (parts.length >= 2) {
+                data.Rating = parts[0].trim();
+                data.Reviews = parts[1].replace(/[()]/g, '').trim();
             }
         }
     }
+    
+    // Category Extraction
+    let categoryBtn = document.querySelector('button[jsaction*="category"]') || document.querySelector('.skqhld') || document.querySelector('.fontBodyMedium.RNmBde');
+    if (categoryBtn) {
+        let text = categoryBtn.innerText.trim();
+        if (text) data.Category = text;
+    }
 
-    // ── WEBSITE ───────────────────────────────
-    const websiteLink = document.querySelector('a[data-item-id="authority"]');
-    if (websiteLink && websiteLink.href) {
+    // Address Extraction
+    let addressBtn = document.querySelector('button[data-item-id="address"]') || 
+                     document.querySelector('button[data-tooltip="Copy address"]') ||
+                     document.querySelector('button[aria-label^="Address:"]');
+    if (addressBtn) {
+        let addressText = addressBtn.innerText.trim();
+        if (!addressText && addressBtn.getAttribute('aria-label')) {
+            addressText = addressBtn.getAttribute('aria-label').replace(/^Address:?\s*/i, '').trim();
+        }
+        if (addressText) data.Address = addressText;
+    } else {
+        let fallbackAddr = document.querySelector('div.Io6YTe.fontBodyMedium[aria-label^="Address:"]');
+        if (fallbackAddr) data.Address = fallbackAddr.innerText.trim();
+    }
+
+    // Phone Extraction
+    let phoneBtn = document.querySelector('button[data-item-id^="phone:tel:"]') || 
+                   document.querySelector('button[data-tooltip="Copy phone number"]') ||
+                   document.querySelector('button[aria-label^="Phone:"]');
+    if (phoneBtn) {
+        let phoneText = phoneBtn.innerText.trim();
+        if (!phoneText && phoneBtn.getAttribute('aria-label')) {
+            phoneText = phoneBtn.getAttribute('aria-label').replace(/^Phone:?\s*/i, '').trim();
+        }
+        if (phoneText) data.Phone = phoneText;
+    } else {
+        let allDivs = Array.from(document.querySelectorAll('div.Io6YTe'));
+        let phoneDiv = allDivs.find(d => /^[\d\s+()-]{7,20}$/.test(d.innerText.trim()));
+        if (phoneDiv) data.Phone = phoneDiv.innerText.trim();
+    }
+
+    // Website Extraction
+    let websiteLink = document.querySelector('a[data-item-id="authority"]') ||
+                      document.querySelector('a[data-tooltip="Open website"]') ||
+                      document.querySelector('a[aria-label^="Website:"]');
+    if (websiteLink) {
         data.Website = websiteLink.href;
     }
-    // Fallback: look for any outbound link that is NOT a google domain
-    if (data.Website === "No Website") {
-        const allAnchors = document.querySelectorAll('a[href^="http"]');
-        for (const a of allAnchors) {
-            if (
-                !a.href.includes('google.com') &&
-                !a.href.includes('google.co.in') &&
-                !a.href.includes('goo.gl') &&
-                !a.href.includes('maps.google') &&
-                a.closest('[jsaction]') // only inside the detail panel
-            ) {
-                data.Website = a.href;
-                break;
-            }
-        }
-    }
 
-    // ── SOCIAL LINKS ──────────────────────────
-    const socialDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'x.com', 'linkedin.com', 'youtube.com'];
-    const socials = [];
-    document.querySelectorAll('a[href]').forEach(a => {
-        if (socialDomains.some(d => a.href.includes(d))) {
-            socials.push(a.href);
+    let allLinks = Array.from(document.querySelectorAll('a[href]'));
+    let socials = [];
+    allLinks.forEach(a => {
+        let href = a.href;
+        if (href.includes('facebook.com') || href.includes('instagram.com') || href.includes('twitter.com') || href.includes('x.com') || href.includes('linkedin.com')) {
+            socials.push(href);
+        }
+        if (!href.includes('google.com') && !href.includes('facebook.com') && !href.includes('instagram.com') && data.Website === "No Website" && a.getAttribute('data-item-id') === 'authority') {
+            data.Website = href;
         }
     });
-    if (socials.length > 0) data.SocialLinks = [...new Set(socials)].join(' | ');
-
-    // ── EMAIL ─────────────────────────────────
-    // Scan the full text of the detail panel for email addresses
-    const panelEl = document.querySelector('div[role="main"]') || document.body;
-    const panelText = panelEl.innerText || '';
-    const emailMatches = panelText.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g);
-    if (emailMatches) {
-        const filtered = [...new Set(emailMatches)].filter(e =>
-            !e.includes('google') && !e.includes('sentry') && !e.includes('example')
-        );
-        if (filtered.length > 0) data.Email = filtered.join(', ');
+    
+    if (socials.length > 0) {
+        data.SocialLinks = socials.join(', ');
     }
 
-    // ── HOURS ─────────────────────────────────
-    const hoursSelectors = [
-        '[data-item-id="oh"]',
-        'button[aria-label*="hour" i]',
-        'button[aria-label*="open" i]',
-        'div[aria-label*="hour" i]'
-    ];
-    for (const sel of hoursSelectors) {
-        const el = document.querySelector(sel);
-        if (el) {
-            const label = el.getAttribute('aria-label');
-            const text = el.innerText.trim();
-            data.Hours = label || text || "Not available";
-            if (data.Hours !== "Not available") break;
+    let panelText = document.body.innerText || "";
+    let emailMatch = panelText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi);
+    if (emailMatch) {
+        let uniqueEmails = [...new Set(emailMatch)].filter(e => !e.endsWith('sentry.io') && !e.includes('google.com'));
+        if (uniqueEmails.length > 0) {
+            data.Email = uniqueEmails.join(', ');
+        }
+    }
+
+    let hoursDiv = document.querySelector('div[aria-label*="Hours:"], div[aria-label*="hours"]');
+    if (hoursDiv && hoursDiv.getAttribute('aria-label')) {
+        data.Hours = hoursDiv.getAttribute('aria-label').replace(/hide open hours/i, '').trim();
+    } else {
+        let hoursBtn = document.querySelector('button[data-item-id="oh"]') || 
+                       document.querySelector('div[data-hide-tooltip-on-mouse-down="true"][aria-label*="time"]') ||
+                       document.querySelector('.OqSTJd'); // A common class for hours
+        if (hoursBtn) {
+            let label = hoursBtn.getAttribute('aria-label') || hoursBtn.innerText;
+            if (label) data.Hours = label.replace(/hide open hours/i, '').trim();
         }
     }
 
     return data;
 }
 
-// Export collected data as CSV file download
+// Export logic: Convert JSON array to CSV and trigger download
 function exportToCSV(results) {
     if (results.length === 0) {
-        alert("✅ Scraping finished!\n\nNo leads found without a website.\n\nTry a different search term like 'Plumbers in Ahmedabad'.");
+        alert("Scraping finished. No leads found without a website.");
         return;
     }
 
     const headers = ["Name", "Phone", "Address", "Website", "Email", "SocialLinks", "Category", "Rating", "Reviews", "Hours"];
-    const csvRows = [headers.join(',')];
-
+    const csvRows = [];
+    
+    csvRows.push(headers.join(','));
+    
     for (const row of results) {
-        const values = headers.map(h => {
-            let val = (row[h] || "").toString().replace(/"/g, '""');
-            if (/[",\n]/.test(val)) val = `"${val}"`;
+        const values = headers.map(header => {
+            let val = row[header] ? row[header].toString() : "";
+            val = val.replace(/"/g, '""');
+            if (val.search(/("|,|\n)/g) >= 0) {
+                val = `"${val}"`;
+            }
             return val;
         });
         csvRows.push(values.join(','));
     }
-
-    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
+    
     const a = document.createElement('a');
     a.href = url;
     a.download = 'google_maps_leads.csv';
@@ -270,110 +267,104 @@ function exportToCSV(results) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-
-    alert(`✅ Done! Exported ${results.length} leads to google_maps_leads.csv`);
 }
 
-// ─────────────────────────────────────────────
-// MAIN SCRAPING LOOP
-// Strategy: iterate the feed list, click each item, extract, go back, repeat
-// ─────────────────────────────────────────────
+// Main Controller
 async function startScraping(maxResults) {
     isRunning = true;
     window.stopScraping = false;
-    const results = [];
-    const processedUrls = new Set();
+    let results = [];
+    let processedLinks = new Set();
     let retries = 0;
-
+    
     showBanner();
-
-    while (processedUrls.size < maxResults && retries < 8 && !window.stopScraping) {
-
-        // Wait for the results feed to be present
-        const feed = document.querySelector('div[role="feed"]');
+    
+    while (processedLinks.size < maxResults && retries < 5 && !window.stopScraping) {
+        let feed = document.querySelector('div[role="feed"]');
         if (!feed) {
             await randomDelay(1000, 2000);
             retries++;
             continue;
         }
-
-        // ── FIX: Skip Sponsored/Ad results ──────
-        // Get ALL place links in the feed, filtering out sponsored ones
-        const allLinks = Array.from(document.querySelectorAll('a[href*="/maps/place/"]'));
-        const filteredLinks = allLinks.filter(link => {
-            // Walk up the DOM to see if this link's parent card has "Sponsored" label
-            let parent = link.closest('[jsaction]');
-            if (parent && parent.innerText && parent.innerText.includes('Sponsored')) return false;
-            // Also filter out links that don't have a proper place URL pattern
-            return link.href.match(/\/maps\/place\/.+\/@/);
-        });
-
-        const unprocessed = filteredLinks.find(link => !processedUrls.has(link.href));
-
+        
+        let links = Array.from(document.querySelectorAll('a[href*="/maps/place/"]'));
+        let unprocessed = links.find(link => !processedLinks.has(link.href));
+        
         if (unprocessed) {
             retries = 0;
-            processedUrls.add(unprocessed.href);
-
-            // Smoothly scroll to the item (human-like)
+            let currentUrl = unprocessed.href;
+            processedLinks.add(currentUrl);
+            
+            // SECURITY FIX: Smooth scrolling to the element
             unprocessed.scrollIntoView({ block: 'center', behavior: 'smooth' });
-            await randomDelay(600, 1400);
-
-            // Click on the business listing
+            
+            // SECURITY FIX: Random human-like pause before clicking
+            await randomDelay(600, 1400); 
             unprocessed.click();
-
-            // Wait for detail panel to load (h1 = business name)
-            const loaded = await waitForElement('h1', 10000);
-            if (loaded) {
-                // Random "reading time" before scraping data
-                await randomDelay(2500, 5000);
-
-                const data = extractData();
-
-                // STRICT FILTER: Only keep businesses with NO website
-                if (!data.Website || data.Website === "No Website") {
-                    // Also skip if name is invalid / sponsored
-                    if (data.Name && data.Name !== "Not available" && !data.Name.toLowerCase().includes('sponsored')) {
-                        results.push(data);
+            
+            let detailsLoaded = await new Promise(resolve => {
+                let checks = 0;
+                let interval = setInterval(() => {
+                    let h1s = Array.from(document.querySelectorAll('h1'));
+                    let validH1 = h1s.find(h => h.innerText.trim() && h.innerText.trim() !== "Results");
+                    if (validH1) {
+                        clearInterval(interval);
+                        resolve(true);
                     }
+                    if (checks > 40) { // 8 seconds max
+                        clearInterval(interval);
+                        resolve(false);
+                    }
+                    checks++;
+                }, 200);
+            });
+            if (detailsLoaded) {
+                // SECURITY FIX: Random "reading" time before pulling data
+                await randomDelay(2000, 4500); 
+                
+                let data = extractData();
+                
+                if (!data.Website || data.Website === "No Website") {
+                    results.push(data);
                 }
-
-                updateBanner(results.length, processedUrls.size);
+                updateBanner(results.length, processedLinks.size);
             }
-
-            // Navigate back to the search results list
+            
+            let backButton = Array.from(document.querySelectorAll('button')).find(b => 
+                (b.getAttribute('aria-label') && b.getAttribute('aria-label').includes('Back')) || 
+                (b.getAttribute('aria-label') && b.getAttribute('aria-label').includes('Search'))
+            );
+            
+            // SECURITY FIX: Random pause before going back
             await randomDelay(500, 1200);
 
-            // Try clicking the native back button first
-            const backBtn = Array.from(document.querySelectorAll('button')).find(b => {
-                const lbl = (b.getAttribute('aria-label') || '').toLowerCase();
-                return lbl.includes('back') || lbl.includes('search results');
-            });
-
-            if (backBtn) {
-                backBtn.click();
+            if (backButton) {
+                backButton.click();
             } else {
                 window.history.back();
             }
-
-            // Wait for feed to reappear
+            
             await waitForElement('div[role="feed"]', 10000);
+            
+            // SECURITY FIX: Random pause after returning to the list
             await randomDelay(1000, 2500);
-
+            
         } else {
-            // All visible links processed → scroll to load more
-            const prevHeight = feed.scrollHeight;
+            // SECURITY FIX: Human-like mouse-wheel style scrolling
+            let previousHeight = feed.scrollHeight;
             await humanScroll(feed);
-            await randomDelay(2000, 4000);
-
-            if (feed.scrollHeight === prevHeight) {
-                // No new items loaded → we've reached the end
+            
+            // Random wait while "loading"
+            await randomDelay(1500, 3500);
+            
+            if (feed.scrollHeight === previousHeight) {
                 retries++;
             } else {
                 retries = 0;
             }
         }
     }
-
+    
     removeBanner();
     exportToCSV(results);
     isRunning = false;
